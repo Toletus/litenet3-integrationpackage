@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Toletus.LiteNet2" Version="8.18.1" />
+      <PackageReference Include="Toletus.Pack.Core" Version="8.2.1" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Toletus.LiteNet3.Handler\Toletus.LiteNet3.Handler.csproj" />
+      <ProjectReference Include="..\Toletus.LiteNet3.Server\Toletus.LiteNet3.Server.csproj" />
+    </ItemGroup>
+
+</Project>

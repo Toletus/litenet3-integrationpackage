@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Toletus.LiteNet3", "src\Toletus.LiteNet3\Toletus.LiteNet3.csproj", "{058E14CE-4618-4F66-9199-09B89D525F44}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Toletus.LiteNet3.Handler", "src\Toletus.LiteNet3.Handler\Toletus.LiteNet3.Handler.csproj", "{8B1B73C5-C146-4790-88A8-F1AB5472CE8E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Toletus.LiteNet3.Server", "src\Toletus.LiteNet3.Server\Toletus.LiteNet3.Server.csproj", "{C896AB83-9A29-49C2-85A8-133DA146D1AD}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{058E14CE-4618-4F66-9199-09B89D525F44}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{058E14CE-4618-4F66-9199-09B89D525F44}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{058E14CE-4618-4F66-9199-09B89D525F44}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{058E14CE-4618-4F66-9199-09B89D525F44}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8B1B73C5-C146-4790-88A8-F1AB5472CE8E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8B1B73C5-C146-4790-88A8-F1AB5472CE8E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8B1B73C5-C146-4790-88A8-F1AB5472CE8E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8B1B73C5-C146-4790-88A8-F1AB5472CE8E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C896AB83-9A29-49C2-85A8-133DA146D1AD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C896AB83-9A29-49C2-85A8-133DA146D1AD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C896AB83-9A29-49C2-85A8-133DA146D1AD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C896AB83-9A29-49C2-85A8-133DA146D1AD}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
