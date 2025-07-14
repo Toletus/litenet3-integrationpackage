@@ -12,8 +12,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Toletus.LiteNet2" Version="8.18.1" />
-        <PackageReference Include="Toletus.Pack.Core" Version="8.2.1" />
+        <PackageReference Include="Toletus.Pack.Core" Version="8.7.1" />
     </ItemGroup>
 
     <ItemGroup>
