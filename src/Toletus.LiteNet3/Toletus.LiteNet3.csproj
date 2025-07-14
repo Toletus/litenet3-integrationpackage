@@ -1,5 +1,4 @@
-﻿
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net9.0</TargetFramework>
@@ -17,15 +16,14 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Toletus.LiteNet3.Handler\Toletus.LiteNet3.Handler.csproj"  PrivateAssets="all" />
-        <ProjectReference Include="..\Toletus.LiteNet3.Server\Toletus.LiteNet3.Server.csproj"  PrivateAssets="all" />
+        <ProjectReference Include="..\Toletus.LiteNet3.Handler\Toletus.LiteNet3.Handler.csproj" PrivateAssets="all" />
+        <ProjectReference Include="..\Toletus.LiteNet3.Server\Toletus.LiteNet3.Server.csproj" PrivateAssets="all" />
     </ItemGroup>
 
     <Target Name="CopyProjectReferencesToPackage" DependsOnTargets="BuildOnlySettings;ResolveReferences">
         <ItemGroup>
             <BuildOutputInPackage Include="@(ReferenceCopyLocalPaths->WithMetadataValue('ReferenceSourceTarget', 'ProjectReference')->WithMetadataValue('PrivateAssets', 'All'))" />
-            <BuildOutputInPackage Include="@(ReferenceCopyLocalPaths->WithMetadataValue('ReferenceSourceTarget', 'Package'))"
-                                  Condition="'%(ReferenceCopyLocalPaths.IsImplicitlyDefined)' != 'true'" />
+            <BuildOutputInPackage Include="@(ReferenceCopyLocalPaths->WithMetadataValue('ReferenceSourceTarget', 'Package'))" />
         </ItemGroup>
     </Target>
 
