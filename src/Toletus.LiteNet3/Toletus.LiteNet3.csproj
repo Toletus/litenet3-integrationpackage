@@ -4,6 +4,8 @@
         <TargetFramework>net9.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <RepositoryUrl>https://github.com/Toletus/litenet3-integrationpackage.git</RepositoryUrl>
+        <PackageVersion>$(PackageVersion)</PackageVersion>
     </PropertyGroup>
 
     <ItemGroup>
