@@ -12,8 +12,14 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Toletus.LiteNet3.Handler\Toletus.LiteNet3.Handler.csproj" />
-      <ProjectReference Include="..\Toletus.LiteNet3.Server\Toletus.LiteNet3.Server.csproj" />
+      <ProjectReference Include="..\Toletus.LiteNet3.Handler\Toletus.LiteNet3.Handler.csproj"  PrivateAssets="all" />
+      <ProjectReference Include="..\Toletus.LiteNet3.Server\Toletus.LiteNet3.Server.csproj"  PrivateAssets="all" />
     </ItemGroup>
+
+    <Target Name="CopyProjectReferencesToPackage" DependsOnTargets="BuildOnlySettings;ResolveReferences">
+        <ItemGroup>
+            <BuildOutputInPackage Include="@(ReferenceCopyLocalPaths-&gt;WithMetadataValue('ReferenceSourceTarget', 'ProjectReference')-&gt;WithMetadataValue('PrivateAssets', 'All'))" />
+        </ItemGroup>
+    </Target>
 
 </Project>
