@@ -1,28 +1,31 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+﻿
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net9.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        
+
         <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);CopyProjectReferencesToPackage</TargetsForTfmSpecificBuildOutput>
         <RepositoryUrl>https://github.com/Toletus/litenet3-integrationpackage.git</RepositoryUrl>
         <PackageVersion>$(PackageVersion)</PackageVersion>
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="Toletus.LiteNet2" Version="8.18.1" />
-      <PackageReference Include="Toletus.Pack.Core" Version="8.2.1" />
+        <PackageReference Include="Toletus.LiteNet2" Version="8.18.1" />
+        <PackageReference Include="Toletus.Pack.Core" Version="8.2.1" />
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Toletus.LiteNet3.Handler\Toletus.LiteNet3.Handler.csproj"  PrivateAssets="all" />
-      <ProjectReference Include="..\Toletus.LiteNet3.Server\Toletus.LiteNet3.Server.csproj"  PrivateAssets="all" />
+        <ProjectReference Include="..\Toletus.LiteNet3.Handler\Toletus.LiteNet3.Handler.csproj"  PrivateAssets="all" />
+        <ProjectReference Include="..\Toletus.LiteNet3.Server\Toletus.LiteNet3.Server.csproj"  PrivateAssets="all" />
     </ItemGroup>
 
     <Target Name="CopyProjectReferencesToPackage" DependsOnTargets="BuildOnlySettings;ResolveReferences">
         <ItemGroup>
-            <BuildOutputInPackage Include="@(ReferenceCopyLocalPaths-&gt;WithMetadataValue('ReferenceSourceTarget', 'ProjectReference')-&gt;WithMetadataValue('PrivateAssets', 'All'))" />
+            <BuildOutputInPackage Include="@(ReferenceCopyLocalPaths->WithMetadataValue('ReferenceSourceTarget', 'ProjectReference')->WithMetadataValue('PrivateAssets', 'All'))" />
+            <BuildOutputInPackage Include="@(ReferenceCopyLocalPaths->WithMetadataValue('ReferenceSourceTarget', 'Package'))"
+                                  Condition="'%(ReferenceCopyLocalPaths.IsImplicitlyDefined)' != 'true'" />
         </ItemGroup>
     </Target>
 
