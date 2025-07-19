@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using Toletus.LiteNet3.Handler.Biometrics.Datas;
+﻿using Toletus.LiteNet3.Handler.Biometrics.Datas;
 using Toletus.LiteNet3.Handler.Biometrics.Images;
 using Toletus.LiteNet3.Handler.Responses.NotificationsResponses.Base;
 

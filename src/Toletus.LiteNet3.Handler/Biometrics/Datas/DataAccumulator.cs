@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using Toletus.LiteNet3.Handler.Biometrics.Interfaces;
+﻿using Toletus.LiteNet3.Handler.Biometrics.Interfaces;
 using Toletus.LiteNet3.Handler.Responses.NotificationsResponses;
 
 namespace Toletus.LiteNet3.Handler.Biometrics.Datas;

@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using Toletus.LiteNet3.Handler.Responses.Base;
+﻿using Toletus.LiteNet3.Handler.Responses.Base;
 
 namespace Toletus.LiteNet3.Handler.Responses.NotificationsResponses;
 

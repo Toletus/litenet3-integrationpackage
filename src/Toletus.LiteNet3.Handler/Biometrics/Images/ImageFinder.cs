@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using SixLabors.ImageSharp;
+﻿using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using Toletus.LiteNet3.Handler.Biometrics.Interfaces;
 
