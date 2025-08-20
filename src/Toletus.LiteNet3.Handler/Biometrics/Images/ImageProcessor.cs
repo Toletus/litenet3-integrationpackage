@@ -1,6 +1,8 @@
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Metadata;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
+using SkiaSharp;
 using Toletus.LiteNet3.Handler.Biometrics.Interfaces;
 
 namespace Toletus.LiteNet3.Handler.Biometrics.Images;
@@ -21,7 +23,70 @@ public class ImageProcessor : IImageProcessor
         var firstDecompression = FirstDecompression(dataBytes);
         return SecondDecompression(firstDecompression);
     }
-    
+
+    #region Teste Bitmap
+
+    public SKBitmap CreateBitmapFromData(byte[] imageData)
+    {
+        var bmp = new SKBitmap(Width, Height, SKColorType.Bgra8888, SKAlphaType.Opaque);
+
+        var index = 0;
+        for (var y = 0; y < Height; y++)
+        {
+            for (var x = 0; x < Width; x++)
+            {
+                if (index + 1 >= imageData.Length)
+                {
+                    bmp.SetPixel(x, y, new SKColor(0, 0, 0));
+                    continue;
+                }
+
+                var value = (ushort)(imageData[index] | (imageData[index + 1] << 8));
+                index += 2;
+
+                var r = Expand5To8((byte)((value >> 10) & 0x1F));
+                var g = Expand5To8((byte)((value >> 5) & 0x1F));
+                var b = Expand5To8((byte)(value & 0x1F));
+                var gray = (byte)(0.299 * r + 0.587 * g + 0.114 * b);
+
+                bmp.SetPixel(x, y, new SKColor(gray, gray, gray));
+            }
+        }
+
+        using var surface = SKSurface.Create(new SKImageInfo(Width, Height));
+        var canvas = surface.Canvas;
+        canvas.Scale(-1, 1);
+        canvas.Translate(-Width, 0);
+        canvas.DrawBitmap(bmp, 0, 0);
+        canvas.Flush();
+
+        var snapshot = surface.Snapshot();
+        var flipped = SKBitmap.FromImage(snapshot);
+        bmp.Dispose();
+        return flipped;
+        
+        static byte Expand5To8(byte v) => (byte)((v << 3) | (v >> 2));
+    }
+
+    public static Image<Rgba32> ToImageSharp(SKBitmap bmp)
+    {
+        using var ms = new MemoryStream();
+        bmp.Encode(ms, SKEncodedImageFormat.Png, 100);
+        ms.Position = 0;
+
+        var image = Image.Load<Rgba32>(ms);
+
+        ApplyImageTransformations(image);
+
+        image.Metadata.ResolutionUnits = PixelResolutionUnit.PixelsPerInch;
+        image.Metadata.HorizontalResolution = 500;
+        image.Metadata.VerticalResolution = 500;
+
+        return image;
+    }
+
+    #endregion
+
     public Image<Rgba32> CreateImageFromData(byte[] imageData)
     {
         var image = new Image<Rgba32>(Width, Height);
@@ -112,6 +177,7 @@ public class ImageProcessor : IImageProcessor
             .Grayscale()
             .Flip(FlipMode.Horizontal));
 
+        image.Metadata.ResolutionUnits = PixelResolutionUnit.PixelsPerInch;
         image.Metadata.HorizontalResolution = 500;
         image.Metadata.VerticalResolution = 500;
     }
