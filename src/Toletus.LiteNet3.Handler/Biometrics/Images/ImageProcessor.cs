@@ -68,7 +68,7 @@ public class ImageProcessor : IImageProcessor
         static byte Expand5To8(byte v) => (byte)((v << 3) | (v >> 2));
     }
 
-    public static Image<Rgba32> ToImageSharp(SKBitmap bmp)
+    public Image<Rgba32> ToImageSharp(SKBitmap bmp)
     {
         using var ms = new MemoryStream();
         bmp.Encode(ms, SKEncodedImageFormat.Png, 100);
