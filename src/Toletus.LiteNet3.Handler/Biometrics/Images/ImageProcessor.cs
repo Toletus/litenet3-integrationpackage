@@ -1,4 +1,5 @@
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.Metadata;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
@@ -18,13 +19,20 @@ public class ImageProcessor : IImageProcessor
         return CreateImageFromData(decompressedData);
     }
 
+    public byte[] ProcessImageFromData(byte[] dataBytes)
+    {
+        var bmp = CreateBitmapFromData(dataBytes);
+        var image = ToImageSharp(bmp);
+        using var ms = new MemoryStream();
+        image.Save(ms, new PngEncoder());
+        return ms.ToArray();
+    }
+
     public byte[] DecompressData(byte[] dataBytes)
     {
         var firstDecompression = FirstDecompression(dataBytes);
         return SecondDecompression(firstDecompression);
     }
-
-    #region Teste Bitmap
 
     public SKBitmap CreateBitmapFromData(byte[] imageData)
     {
@@ -84,8 +92,6 @@ public class ImageProcessor : IImageProcessor
 
         return image;
     }
-
-    #endregion
 
     public Image<Rgba32> CreateImageFromData(byte[] imageData)
     {

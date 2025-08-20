@@ -11,4 +11,5 @@ public interface IImageProcessor
     Image<Rgba32> CreateImageFromData(byte[] imageData);
     SKBitmap CreateBitmapFromData(byte[] imageData);
     Image<Rgba32> ToImageSharp(SKBitmap bmp);
+    byte[] ProcessImageFromData(byte[] dataBytes);
 }
