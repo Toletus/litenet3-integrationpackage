@@ -6,6 +6,7 @@ using Toletus.LiteNet3.Handler;
 using Toletus.LiteNet3.Handler.Requests.Fetches;
 using Toletus.LiteNet3.Handler.Requests.Updates;
 using Toletus.LiteNet3.Handler.Responses.FetchesResponse;
+using Toletus.Pack.Core.Network.Utils;
 using Toletus.Pack.Core.Utils;
 
 namespace Toletus.LiteNet3;

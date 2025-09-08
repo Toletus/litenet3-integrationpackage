@@ -7,6 +7,7 @@ using Toletus.LiteNet3.Handler.Requests.Updates;
 using Toletus.LiteNet3.Handler.Requests.Updates.Ethernet;
 using Toletus.LiteNet3.Handler.Requests.Updates.LiteNet3;
 using Toletus.Pack.Core;
+using Toletus.Pack.Core.Network;
 
 namespace Toletus.LiteNet3;
 
