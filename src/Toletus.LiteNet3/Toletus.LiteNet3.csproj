@@ -8,7 +8,6 @@
         <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);CopyProjectReferencesToPackage</TargetsForTfmSpecificBuildOutput>
         <RepositoryUrl>https://github.com/Toletus/litenet3-integrationpackage.git</RepositoryUrl>
         <PackageVersion>$(PackageVersion)</PackageVersion>
-        <PackageId>Toletus.LiteNet3.V2</PackageId>
     </PropertyGroup>
 
     <ItemGroup>
