@@ -7,7 +7,6 @@ using Toletus.LiteNet3.Handler.Responses.Base;
 using Toletus.LiteNet3.Handler.Responses.NotificationsResponses;
 using Toletus.LiteNet3.Handler.Responses.NotificationsResponses.Base;
 using Toletus.LiteNet3.Server;
-using Toletus.Pack.Core;
 using Toletus.Pack.Core.Network;
 using WebSocketSharp;
 
@@ -15,6 +14,8 @@ namespace Toletus.LiteNet3;
 
 public class LiteNet3BoardBase
 {
+    private readonly ManualResetEventSlim _connectedEvent = new(initialState: false);
+    
     private readonly ResponseDispatcher _dispatcher = new();
     private LiteNet3WebSocketBehavior? _currentBehavior;
     private readonly int _portServer;
@@ -110,9 +111,8 @@ public class LiteNet3BoardBase
 
         Console.WriteLine($"StartAsync: {DateTime.Now}");
 
-        while (!Connected)
-        {
-        }
+        if (!_connectedEvent.Wait(TimeSpan.FromSeconds(30)))
+            throw new TimeoutException("LiteNet3 failed to connect within 30 seconds.");
     }
 
     public void Close()
@@ -213,6 +213,7 @@ public class LiteNet3BoardBase
         WebSockets.TryAdd(serial, obj);
         ToggleWebSocketEventSubscriptions();
         Console.WriteLine($"OnConnected: {Connected} {DateTime.Now}");
+        _connectedEvent.Set();
     }
 
     private void OnDisconnected(string serial)
