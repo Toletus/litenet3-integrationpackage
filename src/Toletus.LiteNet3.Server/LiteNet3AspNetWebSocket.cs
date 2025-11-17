@@ -10,10 +10,6 @@ using Microsoft.Extensions.Hosting;
 
 namespace Toletus.LiteNet3.Server;
 
-/// <summary>
-/// ASP.NET Core implementation of the LiteNet3 WebSocket server. The public surface mimics the
-/// WebSocketSharp-based counterpart so the rest of the solution can swap implementations later.
-/// </summary>
 public class LiteNet3AspNetWebSocket
 {
     private static readonly ConcurrentDictionary<string, bool> ActiveConnections = new();
@@ -57,7 +53,7 @@ public class LiteNet3AspNetWebSocket
                 };
 
                 app.UseWebSockets(webSocketOptions);
-                app.Map("/", RequestDelegate);
+                app.Map("", RequestDelegate);
 
                 _applicationCts = new CancellationTokenSource();
                 _app = app;
