@@ -12,9 +12,11 @@ public class LiteNet3WebSocketBehavior : WebSocketBehavior
 
     private const int InactivityTimeout = 60000; // 1 minuto em milissegundos
     private Timer? _inactivityTimer;
+    private readonly Guid _connectionId = Guid.NewGuid();
+    private int _closed; // 0 = aberto, 1 = fechando/fechado
 
-    public event Action<WebSocket, string>? ConnectedEvent;
-    public event Action<string>? DisconnectedEvent;
+    public event Action<WebSocket, string, Guid>? ConnectedEvent;
+    public event Action<string, Guid>? DisconnectedEvent;
     public event Action<string>? MessageEvent;
 
     protected override void OnOpen()
@@ -37,8 +39,20 @@ public class LiteNet3WebSocketBehavior : WebSocketBehavior
 
             var serial = Context.Headers["Serial"];
 
+            var sessionId = ID;
+            if (LiteNet3WebSocket.TryGetSession(serial, out var oldSessionId) && oldSessionId != sessionId)
+            {
+                try
+                {
+                    Sessions.CloseSession(oldSessionId, (ushort)CloseStatusCode.Normal, "Replaced by new connection");
+                }
+                catch { /* ignore */ }
+            }
+            
+            LiteNet3WebSocket.BindSerialToSession(serial, sessionId);
             LiteNet3WebSocket.RegisterConnection(serial);
-            ConnectedEvent?.Invoke(Context.WebSocket, serial);
+            
+            ConnectedEvent?.Invoke(Context.WebSocket, serial, _connectionId);
 
             InitializeInactivityTimer();
         }
@@ -66,10 +80,19 @@ public class LiteNet3WebSocketBehavior : WebSocketBehavior
             Console.WriteLine(LiteNet3WebSocket.Log);
         }
 
-        _inactivityTimer?.Dispose();
+        try
+        {
+            _inactivityTimer?.Stop();
+            _inactivityTimer?.Dispose();
+            _inactivityTimer = null;
+        }
+        catch { /* ignore */ }
 
-        if (!string.IsNullOrEmpty(serial))
-            LiteNet3WebSocket.UnregisterConnection(serial);
+        var state = Context.WebSocket.ReadyState;
+        if (state != WebSocketState.Closing && state != WebSocketState.Closed)
+        {
+            SafeClose(CloseStatusCode.Abnormal, "Socket error");
+        }
 
         base.OnError(e);
     }
@@ -85,7 +108,16 @@ public class LiteNet3WebSocketBehavior : WebSocketBehavior
 
     protected override void OnClose(CloseEventArgs e)
     {
-        _inactivityTimer?.Dispose();
+        if (Interlocked.Exchange(ref _closed, 1) == 1)
+            return;
+
+        try
+        {
+            _inactivityTimer?.Stop();
+            _inactivityTimer?.Dispose();
+            _inactivityTimer = null;
+        }
+        catch { /* ignore */ }
 
         var serial = Context.Headers["Serial"];
 
@@ -93,16 +125,30 @@ public class LiteNet3WebSocketBehavior : WebSocketBehavior
         Console.WriteLine(LiteNet3WebSocket.Log);
 
         LiteNet3WebSocket.UnregisterConnection(serial);
-        DisconnectedEvent?.Invoke(serial);
+        LiteNet3WebSocket.UnbindSerial(serial);
+        DisconnectedEvent?.Invoke(serial, _connectionId);
     }
 
     private void InitializeInactivityTimer()
     {
-        _inactivityTimer = new Timer(InactivityTimeout);
+        _inactivityTimer = new Timer(InactivityTimeout) { AutoReset = false };
         _inactivityTimer.Elapsed += (_, _) =>
         {
-            Context.WebSocket.Close(CloseStatusCode.Normal, "Inactivity timeout");
+            SafeClose(CloseStatusCode.Normal, "Inactivity timeout");
         };
         _inactivityTimer.Start();
+    }
+
+    private void SafeClose(CloseStatusCode code, string reason)
+    {
+        if (Interlocked.Exchange(ref _closed, 1) == 1)
+            return;
+
+        try
+        {
+            if (Context?.WebSocket?.ReadyState is WebSocketState.Open or WebSocketState.Connecting)
+                Context.WebSocket.Close(code, reason);
+        }
+        catch { /* ignore */ }
     }
 }

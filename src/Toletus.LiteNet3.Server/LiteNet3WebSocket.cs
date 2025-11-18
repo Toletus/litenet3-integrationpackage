@@ -8,7 +8,9 @@ public class LiteNet3WebSocket
 {
     private WebSocketServer? _server;
     public string Log = string.Empty;
+    
     private static readonly ConcurrentDictionary<string, bool> ActiveConnections = new();
+    private static readonly ConcurrentDictionary<string, string> SerialToSession = new();
 
     public Action<LiteNet3WebSocketBehavior>? OnNewBehavior;
 
@@ -20,18 +22,22 @@ public class LiteNet3WebSocket
 
     public static void RegisterConnection(string serial)
     {
-        ActiveConnections.TryAdd(serial, true);
-        Console.WriteLine($"Client {serial} registered. Total connections: {ActiveConnections.Count}");
+        Console.WriteLine(ActiveConnections.TryAdd(serial, true)
+            ? $"Client {serial} registered. Total connections: {ActiveConnections.Count}"
+            : $"Client {serial} reconnected. Total connections: {ActiveConnections.Count}");
     }
 
     public void UnregisterConnection(string serial)
     {
         ActiveConnections.TryRemove(serial, out _);
         Console.WriteLine($"Client {serial} unregistered. Remaining connections: {ActiveConnections.Count}");
+    }
 
-        if (!ActiveConnections.IsEmpty) return;
-        Console.WriteLine("No more active connections. Stopping server...");
-        StopAndClearWebSocketServer();
+    internal static bool TryGetSession(string serial, out string sessionId) => SerialToSession.TryGetValue(serial, out sessionId);
+    internal static void BindSerialToSession(string serial, string sessionId) => SerialToSession[serial] = sessionId;
+    internal static void UnbindSerial(string serial)
+    {
+        SerialToSession.TryRemove(serial, out _);
     }
 
     private void RestartWebSocketServerWithChatService(string uri)
@@ -42,8 +48,9 @@ public class LiteNet3WebSocket
 
             _server = new WebSocketServer(uriObject.Port)
             {
-                KeepClean = false,
-                WaitTime = TimeSpan.FromSeconds(30)
+                KeepClean = true,
+                WaitTime = TimeSpan.FromSeconds(10),
+                ReuseAddress = true
             };
 
             _server.AddWebSocketService<LiteNet3WebSocketBehavior>("/", behavior =>

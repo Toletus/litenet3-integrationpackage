@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.Collections.Concurrent;
+using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
 using Toletus.LiteNet3.Handler;
@@ -17,8 +18,12 @@ public class LiteNet3BoardBase
     private readonly ManualResetEventSlim _connectedEvent = new(initialState: false);
     
     private readonly ResponseDispatcher _dispatcher = new();
+    private readonly object _subscriptionLock = new();
+    private bool _dispatcherSubscribed;
     private LiteNet3WebSocketBehavior? _currentBehavior;
     private readonly int _portServer;
+    private readonly ConcurrentDictionary<string, Guid> _activeConnectionIds = new();
+    private static readonly ConcurrentDictionary<string, object> ConnectLocks = new();
 
     private static readonly Dictionary<string, LiteNet3WebSocket> LiteNet3WebSockets = new();
     private static readonly Dictionary<string, WebSocket> WebSockets = new();
@@ -76,6 +81,8 @@ public class LiteNet3BoardBase
 
     public void Connect(string network)
     {
+        _connectedEvent.Reset();
+
         WebSockets.TryGetValue(Serial, out var webSocket);
         if (webSocket is { IsAlive: true })
             return;
@@ -88,26 +95,48 @@ public class LiteNet3BoardBase
 
         var uri = $"http://{NetworkIp}:{_portServer}/";
 
-        var liteNet3WebSocket = new LiteNet3WebSocket
+        var lockObj = ConnectLocks.GetOrAdd(Serial, _ => new object());
+        lock (lockObj)
         {
-            OnNewBehavior = (behavior) =>
+            if (!LiteNet3WebSockets.TryGetValue(Serial, out var existingServer))
             {
-                if (_currentBehavior != null)
+                existingServer = new LiteNet3WebSocket();
+                LiteNet3WebSockets[Serial] = existingServer;
+                existingServer.OnNewBehavior = (behavior) =>
                 {
-                    _currentBehavior.ConnectedEvent -= OnConnected;
-                    _currentBehavior.DisconnectedEvent -= OnDisconnected;
-                    _currentBehavior.MessageEvent -= OnMessage;
-                }
+                    if (_currentBehavior != null)
+                    {
+                        _currentBehavior.ConnectedEvent -= OnConnected;
+                        _currentBehavior.DisconnectedEvent -= OnDisconnected;
+                        _currentBehavior.MessageEvent -= OnMessage;
+                    }
 
-                _currentBehavior = behavior;
-                behavior.ConnectedEvent += OnConnected;
-                behavior.DisconnectedEvent += OnDisconnected;
-                behavior.MessageEvent += OnMessage;
+                    _currentBehavior = behavior;
+                    behavior.ConnectedEvent += OnConnected;
+                    behavior.DisconnectedEvent += OnDisconnected;
+                    behavior.MessageEvent += OnMessage;
+                };
+
+                existingServer.StartAsync(uri);
             }
-        };
+            else
+            {
+                existingServer.OnNewBehavior = (behavior) =>
+                {
+                    if (_currentBehavior != null)
+                    {
+                        _currentBehavior.ConnectedEvent -= OnConnected;
+                        _currentBehavior.DisconnectedEvent -= OnDisconnected;
+                        _currentBehavior.MessageEvent -= OnMessage;
+                    }
 
-        liteNet3WebSocket.StartAsync(uri);
-        LiteNet3WebSockets.TryAdd(Serial, liteNet3WebSocket);
+                    _currentBehavior = behavior;
+                    behavior.ConnectedEvent += OnConnected;
+                    behavior.DisconnectedEvent += OnDisconnected;
+                    behavior.MessageEvent += OnMessage;
+                };
+            }
+        }
 
         Console.WriteLine($"StartAsync: {DateTime.Now}");
 
@@ -124,9 +153,34 @@ public class LiteNet3BoardBase
     protected void Send(RequestBase request)
     {
         var json = request.Serialize();
+        if (!WebSockets.TryGetValue(Serial, out var value))
+        {
+            Console.WriteLine($"[LiteNet3] Send aborted: no WebSocket for serial {Serial}.");
+            return;
+        }
 
-        if (WebSockets.TryGetValue(Serial, out var value))
+        if (value is not { IsAlive: true })
+        {
+            Console.WriteLine($"[LiteNet3] Send aborted: WebSocket not alive for serial {Serial}.");
+            return;
+        }
+
+        try
+        {
             value.Send(json);
+        }
+        catch (IOException ioEx)
+        {
+            Console.WriteLine($"[LiteNet3] Send failed (IO) for serial {Serial}: {ioEx.Message}");
+        }
+        catch (SocketException sockEx)
+        {
+            Console.WriteLine($"[LiteNet3] Send failed (Socket) for serial {Serial}: {sockEx.Message}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[LiteNet3] Send failed (Unexpected) for serial {Serial}: {ex.Message}");
+        }
     }
 
     private static void DisconnectWebSocketClients(string serial, bool isOnDisconnect = false)
@@ -143,21 +197,36 @@ public class LiteNet3BoardBase
 
     private void ToggleWebSocketEventSubscriptions(bool isRegister = true)
     {
-        if (isRegister)
+        lock (_subscriptionLock)
         {
-            _dispatcher.OnNotificationResponse += OnNotificationResponse;
-            _dispatcher.OnNotificationBiometricsResponse += OnNotificationBiometricsResponse;
-            _dispatcher.OnFetchResponse += OnOnFetchResponseHandler;
-            _dispatcher.OnUpdateResponse += OnChangeResponseHandler;
-            _dispatcher.OnActionResponse += OnChangeResponseHandler;
-        }
-        else
-        {
-            _dispatcher.OnNotificationResponse -= OnNotificationResponse;
-            _dispatcher.OnNotificationBiometricsResponse -= OnNotificationBiometricsResponse;
-            _dispatcher.OnFetchResponse -= OnOnFetchResponseHandler;
-            _dispatcher.OnUpdateResponse -= OnChangeResponseHandler;
-            _dispatcher.OnActionResponse -= OnChangeResponseHandler;
+            if (isRegister)
+            {
+                if (_dispatcherSubscribed)
+                    return;
+
+                _dispatcher.OnNotificationResponse += OnNotificationResponse;
+                _dispatcher.OnNotificationBiometricsResponse += OnNotificationBiometricsResponse;
+                _dispatcher.OnFetchResponse += OnOnFetchResponseHandler;
+                _dispatcher.OnUpdateResponse += OnChangeResponseHandler;
+                _dispatcher.OnActionResponse += OnChangeResponseHandler;
+
+                _dispatcherSubscribed = true;
+                Console.WriteLine("[LiteNet3] Dispatcher handlers subscribed.");
+            }
+            else
+            {
+                if (!_dispatcherSubscribed)
+                    return;
+
+                _dispatcher.OnNotificationResponse -= OnNotificationResponse;
+                _dispatcher.OnNotificationBiometricsResponse -= OnNotificationBiometricsResponse;
+                _dispatcher.OnFetchResponse -= OnOnFetchResponseHandler;
+                _dispatcher.OnUpdateResponse -= OnChangeResponseHandler;
+                _dispatcher.OnActionResponse -= OnChangeResponseHandler;
+
+                _dispatcherSubscribed = false;
+                Console.WriteLine("[LiteNet3] Dispatcher handlers unsubscribed.");
+            }
         }
     }
 
@@ -207,18 +276,39 @@ public class LiteNet3BoardBase
         OnBiometricsResponse?.Invoke(this, obj);
     }
 
-    private void OnConnected(WebSocket obj, string serial)
+    private void OnConnected(WebSocket obj, string serial, Guid connectionId)
     {
         Connected = true;
-        WebSockets.TryAdd(serial, obj);
+        _activeConnectionIds[serial] = connectionId;
+        if (WebSockets.TryGetValue(serial, out var oldWs))
+        {
+            if (!ReferenceEquals(oldWs, obj))
+            {
+                try
+                {
+                    if (oldWs.IsAlive)
+                        oldWs.Close(CloseStatusCode.Normal, "Replaced by new connection");
+                }
+                catch { /* ignore */ }
+                Console.WriteLine($"[LiteNet3] Replacing existing WebSocket for serial {serial}.");
+            }
+        }
+
+        WebSockets[serial] = obj;
         ToggleWebSocketEventSubscriptions();
         Console.WriteLine($"OnConnected: {Connected} {DateTime.Now}");
         _connectedEvent.Set();
     }
 
-    private void OnDisconnected(string serial)
+    private void OnDisconnected(string serial, Guid connectionId)
     {
         Console.WriteLine($"OnDisconnected: {Connected} {DateTime.Now}");
+        if (_activeConnectionIds.TryGetValue(serial, out var current) && current != connectionId)
+        {
+            Console.WriteLine($"[LiteNet3] Ignoring OnDisconnected from stale connection {connectionId} for serial {serial}.");
+            return;
+        }
+
         DisconnectWebSocketClients(serial, true);
         ToggleWebSocketEventSubscriptions(isRegister: false);
         Connected = false;
