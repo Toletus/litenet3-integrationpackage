@@ -154,10 +154,11 @@ public class LiteNet3BoardBase
             throw new TimeoutException("LiteNet3 failed to connect within 30 seconds.");
     }
 
-    public bool ConnectSerialPort(string? serialPortName = null)
+    public void ConnectSerialPort(string? serialPortName = null)
     {
-        if (_serialService?.IsOpen == true) return false;
-        
+        if (_serialService?.IsOpen == true)
+            Close();
+
         _serialService = new SerialService();
         _serialService.Start(serialPortName);
         _serialService.MessageEvent += OnMessage;
@@ -171,8 +172,6 @@ public class LiteNet3BoardBase
         Ip = IPAddress.Loopback;
 
         ToggleWebSocketEventSubscriptions();
-        
-        return true;
     }
 
     public void Close()
@@ -189,7 +188,7 @@ public class LiteNet3BoardBase
     {
         var json = request.Serialize();
 
-        if (_serialService?.IsOpen == true)     
+        if (_serialService?.IsOpen == true)
         {
             _serialService.Send(json);
             return;
