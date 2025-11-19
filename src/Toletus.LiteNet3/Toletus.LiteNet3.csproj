@@ -19,6 +19,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\Toletus.LiteNet3.Handler\Toletus.LiteNet3.Handler.csproj" PrivateAssets="all"/>
+        <ProjectReference Include="..\Toletus.LiteNet3.SerialPort\Toletus.LiteNet3.SerialPort.csproj" />
         <ProjectReference Include="..\Toletus.LiteNet3.Server\Toletus.LiteNet3.Server.csproj" PrivateAssets="all"/>
     </ItemGroup>
 

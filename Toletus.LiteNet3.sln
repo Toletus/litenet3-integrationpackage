@@ -6,6 +6,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Toletus.LiteNet3.Handler", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Toletus.LiteNet3.Server", "src\Toletus.LiteNet3.Server\Toletus.LiteNet3.Server.csproj", "{C896AB83-9A29-49C2-85A8-133DA146D1AD}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Toletus.LiteNet3.SerialPort", "src\Toletus.LiteNet3.SerialPort\Toletus.LiteNet3.SerialPort.csproj", "{8AB256D9-CC27-405C-BE8B-0C969C168C7D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -24,5 +26,9 @@ Global
 		{C896AB83-9A29-49C2-85A8-133DA146D1AD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C896AB83-9A29-49C2-85A8-133DA146D1AD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C896AB83-9A29-49C2-85A8-133DA146D1AD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8AB256D9-CC27-405C-BE8B-0C969C168C7D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8AB256D9-CC27-405C-BE8B-0C969C168C7D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8AB256D9-CC27-405C-BE8B-0C969C168C7D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8AB256D9-CC27-405C-BE8B-0C969C168C7D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

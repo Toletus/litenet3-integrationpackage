@@ -4,9 +4,12 @@ using System.Net.Sockets;
 using System.Text.Json;
 using Toletus.LiteNet3.Handler;
 using Toletus.LiteNet3.Handler.Requests;
+using Toletus.LiteNet3.Handler.Requests.Fetches;
 using Toletus.LiteNet3.Handler.Responses.Base;
+using Toletus.LiteNet3.Handler.Responses.FetchesResponse;
 using Toletus.LiteNet3.Handler.Responses.NotificationsResponses;
 using Toletus.LiteNet3.Handler.Responses.NotificationsResponses.Base;
+using Toletus.LiteNet3.SerialPort;
 using Toletus.LiteNet3.Server;
 using Toletus.Pack.Core.Network;
 using WebSocketSharp;
@@ -16,9 +19,9 @@ namespace Toletus.LiteNet3;
 public class LiteNet3BoardBase
 {
     private readonly ManualResetEventSlim _connectedEvent = new(initialState: false);
-    
+
     private readonly ResponseDispatcher _dispatcher = new();
-    private readonly object _subscriptionLock = new();
+    private readonly Lock _subscriptionLock = new();
     private bool _dispatcherSubscribed;
     private LiteNet3WebSocketBehavior? _currentBehavior;
     private readonly int _portServer;
@@ -27,6 +30,8 @@ public class LiteNet3BoardBase
 
     private static readonly Dictionary<string, LiteNet3WebSocket> LiteNet3WebSockets = new();
     private static readonly Dictionary<string, WebSocket> WebSockets = new();
+    private static SerialService? _serialService;
+
     private string ConnectionInfo { get; set; }
 
     public IPAddress Ip { get; set; }
@@ -77,6 +82,11 @@ public class LiteNet3BoardBase
         Alias = alias;
     }
 
+    protected LiteNet3BoardBase(string connectionInfo = "")
+    {
+        ConnectionInfo = connectionInfo == "None" ? "Disconnected" : connectionInfo;
+    }
+
     public override string ToString() => $"LiteNet3 #{Id} {Ip}:{Port} {ConnectionInfo}";
 
     public void Connect(string network)
@@ -86,7 +96,7 @@ public class LiteNet3BoardBase
         WebSockets.TryGetValue(Serial, out var webSocket);
         if (webSocket is { IsAlive: true })
             return;
-        
+
         NetworkIp = NetworkHelper.GetLocalNetworkAddress(network);
         var serverUri = $"ws://{NetworkIp}:{_portServer}";
 
@@ -117,7 +127,7 @@ public class LiteNet3BoardBase
                     behavior.MessageEvent += OnMessage;
                 };
 
-                existingServer.StartAsync(uri);
+                existingServer.Start(uri);
             }
             else
             {
@@ -138,21 +148,53 @@ public class LiteNet3BoardBase
             }
         }
 
-        Console.WriteLine($"StartAsync: {DateTime.Now}");
+        Console.WriteLine($"Start: {DateTime.Now}");
 
         if (!_connectedEvent.Wait(TimeSpan.FromSeconds(30)))
             throw new TimeoutException("LiteNet3 failed to connect within 30 seconds.");
     }
 
+    public bool ConnectSerialPort(string? serialPortName = null)
+    {
+        if (_serialService?.IsOpen == true) return false;
+        
+        _serialService = new SerialService();
+        _serialService.Start(serialPortName);
+        _serialService.MessageEvent += OnMessage;
+        Connected = true;
+
+        var liteNet3Response = _serialService.SendAndWaitResponse<LiteNet3Response>(new LiteNet3Fetch().Serialize());
+
+        Id = liteNet3Response.Id;
+        Alias = liteNet3Response.Alias;
+        Serial = liteNet3Response.Serial;
+        Ip = NetworkHelper.GetLocalNetworkAddress()!;
+
+        ToggleWebSocketEventSubscriptions();
+        
+        return true;
+    }
+
     public void Close()
     {
-        DisconnectWebSocketClients(Serial);
+        if (_serialService != null)
+            CloseSerialPort();
+        else
+            DisconnectWebSocketClients(Serial);
+
         Connected = false;
     }
 
     protected void Send(RequestBase request)
     {
         var json = request.Serialize();
+
+        if (_serialService?.IsOpen == true)     
+        {
+            _serialService.Send(json);
+            return;
+        }
+
         if (!WebSockets.TryGetValue(Serial, out var value))
         {
             Console.WriteLine($"[LiteNet3] Send aborted: no WebSocket for serial {Serial}.");
@@ -183,13 +225,21 @@ public class LiteNet3BoardBase
         }
     }
 
+    private void CloseSerialPort()
+    {
+        _serialService?.Stop();
+        _serialService = null;
+
+        ToggleWebSocketEventSubscriptions(isRegister: false);
+    }
+
     private static void DisconnectWebSocketClients(string serial, bool isOnDisconnect = false)
     {
         if (!LiteNet3WebSockets.TryGetValue(serial, out var liteNet3WebSocket)) return;
 
         if (!isOnDisconnect)
             liteNet3WebSocket.StopAndClearWebSocketServer();
-        
+
         LiteNet3WebSockets.Remove(serial);
         WebSockets.Remove(serial);
     }
@@ -289,7 +339,11 @@ public class LiteNet3BoardBase
                     if (oldWs.IsAlive)
                         oldWs.Close(CloseStatusCode.Normal, "Replaced by new connection");
                 }
-                catch { /* ignore */ }
+                catch
+                {
+                    /* ignore */
+                }
+
                 Console.WriteLine($"[LiteNet3] Replacing existing WebSocket for serial {serial}.");
             }
         }
@@ -305,7 +359,8 @@ public class LiteNet3BoardBase
         Console.WriteLine($"OnDisconnected: {Connected} {DateTime.Now}");
         if (_activeConnectionIds.TryGetValue(serial, out var current) && current != connectionId)
         {
-            Console.WriteLine($"[LiteNet3] Ignoring OnDisconnected from stale connection {connectionId} for serial {serial}.");
+            Console.WriteLine(
+                $"[LiteNet3] Ignoring OnDisconnected from stale connection {connectionId} for serial {serial}.");
             return;
         }
 

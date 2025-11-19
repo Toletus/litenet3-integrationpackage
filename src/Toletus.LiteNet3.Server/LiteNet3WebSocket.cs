@@ -14,7 +14,7 @@ public class LiteNet3WebSocket
 
     public Action<LiteNet3WebSocketBehavior>? OnNewBehavior;
 
-    public void StartAsync(string uri)
+    public void Start(string uri)
     {
         StopAndClearWebSocketServer();
         RestartWebSocketServerWithChatService(uri);

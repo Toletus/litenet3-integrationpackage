@@ -6,7 +6,6 @@ using Toletus.LiteNet3.Handler.Requests.Fetches;
 using Toletus.LiteNet3.Handler.Requests.Updates;
 using Toletus.LiteNet3.Handler.Requests.Updates.Ethernet;
 using Toletus.LiteNet3.Handler.Requests.Updates.LiteNet3;
-using Toletus.Pack.Core;
 using Toletus.Pack.Core.Network;
 
 namespace Toletus.LiteNet3;
@@ -18,6 +17,8 @@ public class LiteNet3Board : LiteNet3BoardBase
     {
         IpConfig = new IpConfig();
     }
+    
+    private LiteNet3Board(){}
 
     public static LiteNet3Board CreateFromBase(LiteNet3BoardBase boardBase)
     {
@@ -28,6 +29,8 @@ public class LiteNet3Board : LiteNet3BoardBase
             boardBase.Serial,
             boardBase.Alias);
     }
+
+    public static LiteNet3Board CreateToSerialPort() => new();
 
     public override string ToString() =>
         $"{base.ToString()}" + (HasFingerprintReader ? " Bio" : "") + $" {Description}";
