@@ -168,7 +168,7 @@ public class LiteNet3BoardBase
         Id = liteNet3Response.Id;
         Alias = liteNet3Response.Alias;
         Serial = liteNet3Response.Serial;
-        Ip = NetworkHelper.GetLocalNetworkAddress()!;
+        Ip = IPAddress.Loopback;
 
         ToggleWebSocketEventSubscriptions();
         
