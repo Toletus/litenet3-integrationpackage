@@ -39,7 +39,7 @@ public class DataAccumulator(IDataStorage dataStorage, IDataValidator dataValida
 
     private void HandleIntermediateData(BiometricsResponse biometrics)
     {
-        var dataBytes = dataValidator.ConvertStringToByteArray(biometrics.Package);
+        var dataBytes = dataValidator.ConvertHexStringToByteArray(biometrics.Package);
         _expectedLength += biometrics.Len;
 
         if (dataBytes == null || !dataValidator.IsValidData(biometrics, dataBytes, dataStorage))

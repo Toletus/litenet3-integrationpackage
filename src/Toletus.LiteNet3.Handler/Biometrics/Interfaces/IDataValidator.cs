@@ -4,6 +4,6 @@ namespace Toletus.LiteNet3.Handler.Biometrics.Interfaces;
 
 public interface IDataValidator
 {
-    byte[]? ConvertStringToByteArray(string byteString);
+    byte[]? ConvertHexStringToByteArray(string byteString);
     bool IsValidData(BiometricsResponse biometrics, byte[] data, IDataStorage dataStorage);
 }
