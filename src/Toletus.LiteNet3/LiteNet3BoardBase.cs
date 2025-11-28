@@ -190,6 +190,7 @@ public class LiteNet3BoardBase
 
         if (_serialService?.IsOpen == true)
         {
+            Console.WriteLine($"[LiteNet3] Send via serial: {json}");
             _serialService.Send(json);
             return;
         }
