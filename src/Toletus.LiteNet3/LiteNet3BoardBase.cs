@@ -150,8 +150,10 @@ public class LiteNet3BoardBase
 
         Console.WriteLine($"Start: {DateTime.Now}");
 
-        if (!_connectedEvent.Wait(TimeSpan.FromSeconds(30)))
-            throw new TimeoutException("LiteNet3 failed to connect within 30 seconds.");
+        if (_connectedEvent.Wait(TimeSpan.FromSeconds(30))) return;
+        
+        Close();
+        throw new TimeoutException("LiteNet3 failed to connect within 30 seconds.");
     }
 
     public void ConnectSerialPort(string? serialPortName = null)
