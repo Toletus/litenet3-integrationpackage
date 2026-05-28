@@ -17,5 +17,6 @@ public enum ResponseType
     LiteNet3,
     Sensor,
     Server,
-    Factory
+    Factory,
+    Error
 }

@@ -30,6 +30,9 @@ public class NotificationResponse : ResponseBase
             case ResponseType.Timeout:
                 OnNotificationResponse?.Invoke(GetData<TimeoutResponse>());
                 break;
+            case ResponseType.Error:
+                OnNotificationResponse?.Invoke(GetData<ErrorResponse>());
+                break;
             case ResponseType.Biometrics:
                 var biometrics = GetData<BiometricsResponse>();
                 if (biometrics != null && biometrics.Process())
