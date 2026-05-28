@@ -35,6 +35,8 @@ public class LiteNet3Board : LiteNet3BoardBase
     public override string ToString() =>
         $"{base.ToString()}" + (HasFingerprintReader ? " Bio" : "") + $" {Description}";
 
+    public void SendAction(string action, object? data = null) => Send(new GenericAction(action, data));
+
     public void ReleaseEntry(string? topRow, string? bottomRow)
     {
         Send(LiteNet3ActionFactory.CreateReleaseAction("In", topRow, bottomRow));
