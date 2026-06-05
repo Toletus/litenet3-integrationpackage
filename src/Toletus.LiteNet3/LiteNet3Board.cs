@@ -36,6 +36,7 @@ public class LiteNet3Board : LiteNet3BoardBase
         $"{base.ToString()}" + (HasFingerprintReader ? " Bio" : "") + $" {Description}";
 
     public void SendAction(string action, object? data = null) => Send(new GenericAction(action, data));
+    public void SendFetch(string fetch) => Send(new GenericFetch(fetch));
 
     public void ReleaseEntry(string? topRow, string? bottomRow)
     {
