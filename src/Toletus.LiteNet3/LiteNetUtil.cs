@@ -37,7 +37,7 @@ public static class LiteNetUtil
 
     public static void SetServer(IPAddress ip, string serverUri, string serial)
     {
-        var serverSet = new ServerUpdate(serverUri);
+        var serverSet = new ServerUpdate(serial, serverUri);
         var requestContent = JsonSerializer.Serialize(serverSet);
         var udpClient = new UdpClient();
         var data = Encoding.ASCII.GetBytes(requestContent);

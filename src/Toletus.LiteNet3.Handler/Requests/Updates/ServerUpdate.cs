@@ -2,9 +2,9 @@
 
 public class ServerUpdate : UpdateBase
 {
-    public ServerUpdate(string uri)
+    public ServerUpdate(string serial,string uri)
     {
         Update = "server";
-        Data = new { uri };
+        Data = new { serial, uri };
     }
 }
