@@ -8,6 +8,13 @@ public class DataValidator : IDataValidator
 {
     public byte[] ConvertHexStringToByteArray(string hexString)
     {
+        if (hexString.Contains(','))
+            return hexString
+                .Trim('"', '[', ']', ' ')
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(byte.Parse)
+                .ToArray();
+
         var sanitized = hexString
             .Trim('"', '[', ']', ' ')
             .Replace(" ", string.Empty);

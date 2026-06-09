@@ -30,6 +30,10 @@ public class NotificationResponse : ResponseBase
             case ResponseType.Timeout:
                 OnNotificationResponse?.Invoke(GetData<TimeoutResponse>());
                 break;
+            case ResponseType.Button1:
+            case ResponseType.Button2:
+                OnNotificationResponse?.Invoke(GetData<ButtonResponse>());
+                break;
             case ResponseType.Error:
                 OnNotificationResponse?.Invoke(GetData<ErrorResponse>());
                 break;

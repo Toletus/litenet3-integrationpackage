@@ -7,6 +7,8 @@ public enum ResponseType
     Keypad,
     Passage,
     Timeout,
+    Button1,
+    Button2,
     Biometrics,
     Ping,
     Display,

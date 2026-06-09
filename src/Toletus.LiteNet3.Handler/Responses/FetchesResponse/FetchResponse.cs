@@ -10,6 +10,12 @@ public class FetchResponse : ResponseBase
 
     public void Proccess()
     {
+        if (Result != null || Data?["result"] != null)
+        {
+            OnFetchResponseHandler?.Invoke(GetData<FetchErrorResponse>());
+            return;
+        }
+
         switch (Fetch)
         {
             case ResponseType.Display:

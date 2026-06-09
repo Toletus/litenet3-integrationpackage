@@ -317,6 +317,12 @@ public class LiteNet3BoardBase
                 OnReleaseResponse?.Invoke(this, response);
                 Console.WriteLine(JsonSerializer.Serialize(obj));
                 return;
+            case ButtonResponse:
+                OnResponse?.Invoke(this, obj);
+                return;
+            case ErrorResponse:
+                OnResponse?.Invoke(this, obj);
+                return;
             default:
                 Console.WriteLine(JsonSerializer.Serialize(obj));
                 break;

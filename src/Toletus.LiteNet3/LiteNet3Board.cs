@@ -50,7 +50,7 @@ public class LiteNet3Board : LiteNet3BoardBase
 
     public void ReleaseEntryAndExit(string? topRow, string? bottomRow)
     {
-        Send(LiteNet3ActionFactory.CreateReleaseAction("All", topRow, bottomRow));
+        Send(LiteNet3ActionFactory.CreateReleaseAction("Both", topRow, bottomRow));
     }
 
     public void BuzzerPlay(string play)

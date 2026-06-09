@@ -16,9 +16,14 @@ public class DataAccumulator(IDataStorage dataStorage, IDataValidator dataValida
     public void AccumulateData(BiometricsResponse biometrics)
     {
         if (biometrics.Finally)
-            FinalizeData();
-        else
+        {
             HandleIntermediateData(biometrics);
+            FinalizeData();
+        }
+        else
+        {
+            HandleIntermediateData(biometrics);
+        }
     }
 
     public byte[]? GetData()
