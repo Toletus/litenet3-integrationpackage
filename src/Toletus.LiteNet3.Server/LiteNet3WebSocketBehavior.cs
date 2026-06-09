@@ -10,10 +10,13 @@ public class LiteNet3WebSocketBehavior : WebSocketBehavior
 {
     public LiteNet3WebSocket LiteNet3WebSocket { get; set; }
 
-    private const int InactivityTimeout = 60000; // 1 minuto em milissegundos
+    private const int InactivityTimeout = 5 * 60 * 1000; // 5 minutos em milissegundos
+    private const int MaxMissedHeartbeats = 2;
     private Timer? _inactivityTimer;
     private readonly Guid _connectionId = Guid.NewGuid();
     private int _closed; // 0 = aberto, 1 = fechando/fechado
+    private int _closeRequested;
+    private int _missedHeartbeats;
 
     public event Action<WebSocket, string, Guid>? ConnectedEvent;
     public event Action<string, Guid>? DisconnectedEvent;
@@ -99,6 +102,7 @@ public class LiteNet3WebSocketBehavior : WebSocketBehavior
 
     protected override void OnMessage(MessageEventArgs e)
     {
+        Interlocked.Exchange(ref _missedHeartbeats, 0);
         _inactivityTimer?.Stop();
         _inactivityTimer?.Start();
 
@@ -134,14 +138,40 @@ public class LiteNet3WebSocketBehavior : WebSocketBehavior
         _inactivityTimer = new Timer(InactivityTimeout) { AutoReset = false };
         _inactivityTimer.Elapsed += (_, _) =>
         {
-            SafeClose(CloseStatusCode.Normal, "Inactivity timeout");
+            var serial = Context.Headers["Serial"];
+
+            try
+            {
+                if (Context.WebSocket.Ping("heartbeat"))
+                {
+                    Interlocked.Exchange(ref _missedHeartbeats, 0);
+                    Console.WriteLine($"Heartbeat OK for {serial}.");
+                    _inactivityTimer?.Start();
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Heartbeat failed for {serial}: {ex.Message}");
+            }
+
+            var missedHeartbeats = Interlocked.Increment(ref _missedHeartbeats);
+            Console.WriteLine($"Heartbeat missed for {serial}: {missedHeartbeats}/{MaxMissedHeartbeats}.");
+
+            if (missedHeartbeats >= MaxMissedHeartbeats)
+            {
+                SafeClose(CloseStatusCode.Normal, "Inactivity timeout");
+                return;
+            }
+
+            _inactivityTimer?.Start();
         };
         _inactivityTimer.Start();
     }
 
     private void SafeClose(CloseStatusCode code, string reason)
     {
-        if (Interlocked.Exchange(ref _closed, 1) == 1)
+        if (Interlocked.Exchange(ref _closeRequested, 1) == 1)
             return;
 
         try
