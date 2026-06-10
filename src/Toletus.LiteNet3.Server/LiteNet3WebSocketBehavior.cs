@@ -10,7 +10,7 @@ public class LiteNet3WebSocketBehavior : WebSocketBehavior
 {
     public LiteNet3WebSocket LiteNet3WebSocket { get; set; }
 
-    private const int InactivityTimeout = 5 * 60 * 1000; // 5 minutos em milissegundos
+    private const int InactivityTimeout = 60 * 1000; // 1 minuto em milissegundos
     private const int MaxMissedHeartbeats = 2;
     private Timer? _inactivityTimer;
     private readonly Guid _connectionId = Guid.NewGuid();
@@ -57,7 +57,7 @@ public class LiteNet3WebSocketBehavior : WebSocketBehavior
             
             ConnectedEvent?.Invoke(Context.WebSocket, serial, _connectionId);
 
-            InitializeInactivityTimer();
+            // InitializeInactivityTimer();
         }
         catch (Exception ex)
         {
