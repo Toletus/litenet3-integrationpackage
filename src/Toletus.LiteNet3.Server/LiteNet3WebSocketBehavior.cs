@@ -1,184 +1,68 @@
-﻿using System.Net.Sockets;
-using WebSocketSharp;
-using WebSocketSharp.Server;
-using ErrorEventArgs = WebSocketSharp.ErrorEventArgs;
-using Timer = System.Timers.Timer;
+using System.Net.WebSockets;
+using System.Text;
 
 namespace Toletus.LiteNet3.Server;
 
-public class LiteNet3WebSocketBehavior : WebSocketBehavior
+public class LiteNet3WebSocketBehavior
 {
-    public LiteNet3WebSocket LiteNet3WebSocket { get; set; }
+    public LiteNet3WebSocket LiteNet3WebSocket { get; set; } = null!;
 
-    private const int InactivityTimeout = 60 * 1000; // 1 minuto em milissegundos
-    private const int MaxMissedHeartbeats = 2;
-    private Timer? _inactivityTimer;
     private readonly Guid _connectionId = Guid.NewGuid();
-    private int _closed; // 0 = aberto, 1 = fechando/fechado
-    private int _closeRequested;
-    private int _missedHeartbeats;
+    private CancellationTokenSource? _connectionCts;
 
     public event Action<WebSocket, string, Guid>? ConnectedEvent;
     public event Action<string, Guid>? DisconnectedEvent;
     public event Action<string>? MessageEvent;
 
-    protected override void OnOpen()
+    internal void Abort() => _connectionCts?.Cancel();
+
+    public async Task RunAsync(WebSocket ws, string serial, CancellationToken serverToken)
     {
+        _connectionCts = CancellationTokenSource.CreateLinkedTokenSource(serverToken);
+        var ct = _connectionCts.Token;
+
+        if (LiteNet3WebSocket.TryGetBehavior(serial, out var oldBehavior) && oldBehavior != this)
+        {
+            try { oldBehavior!.Abort(); } catch { /* ignore */ }
+        }
+
+        LiteNet3WebSocket.BindSerialToBehavior(serial, this);
+        LiteNet3WebSocket.RegisterConnection(serial);
+
+        ConnectedEvent?.Invoke(ws, serial, _connectionId);
+
         try
         {
-            if (!Context.Headers.Contains("x-api-key") || !Context.Headers.Contains("Serial"))
+            var buffer = new byte[4096];
+            while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
             {
-                Context.WebSocket.Close(CloseStatusCode.PolicyViolation, "Missing required headers");
-                return;
-            }
-
-            var apiKey = Context.Headers["x-api-key"];
-
-            if (apiKey != "12345-abcde-67890-fghij")
-            {
-                Context.WebSocket.Close(CloseStatusCode.PolicyViolation, "Invalid API key");
-                return;
-            }
-
-            var serial = Context.Headers["Serial"];
-
-            var sessionId = ID;
-            if (LiteNet3WebSocket.TryGetSession(serial, out var oldSessionId) && oldSessionId != sessionId)
-            {
+                WebSocketReceiveResult result;
                 try
                 {
-                    Sessions.CloseSession(oldSessionId, (ushort)CloseStatusCode.Normal, "Replaced by new connection");
+                    result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
                 }
+                catch (OperationCanceledException) { break; }
+                catch (WebSocketException) { break; }
+
+                if (result.CloseStatus.HasValue)
+                    break;
+
+                if (result.MessageType == WebSocketMessageType.Text)
+                    MessageEvent?.Invoke(Encoding.UTF8.GetString(buffer, 0, result.Count));
+            }
+
+            if (ws.State == WebSocketState.Open)
+            {
+                try { await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None); }
                 catch { /* ignore */ }
             }
-            
-            LiteNet3WebSocket.BindSerialToSession(serial, sessionId);
-            LiteNet3WebSocket.RegisterConnection(serial);
-            
-            ConnectedEvent?.Invoke(Context.WebSocket, serial, _connectionId);
-
-            // InitializeInactivityTimer();
         }
-        catch (Exception ex)
+        finally
         {
-            Console.WriteLine($"Error during connection open: {ex.Message}");
-            _inactivityTimer?.Dispose();
-            throw;
+            LiteNet3WebSocket.UnregisterConnection(serial);
+            LiteNet3WebSocket.UnbindSerial(serial);
+            DisconnectedEvent?.Invoke(serial, _connectionId);
+            _connectionCts.Dispose();
         }
-    }
-
-    protected override void OnError(ErrorEventArgs e)
-    {
-        var serial = Context.Headers["Serial"];
-
-        if (e.Exception is IOException { InnerException: SocketException sockEx })
-        {
-            LiteNet3WebSocket.Log =
-                $"Socket error for client {serial}: Code {sockEx.ErrorCode}, Message: {sockEx.Message}";
-            Console.WriteLine($"Socket disconnection detected for {serial}: {sockEx.ErrorCode}");
-        }
-        else
-        {
-            LiteNet3WebSocket.Log = $"Error for client {serial}: {e.Message}";
-            Console.WriteLine(LiteNet3WebSocket.Log);
-        }
-
-        try
-        {
-            _inactivityTimer?.Stop();
-            _inactivityTimer?.Dispose();
-            _inactivityTimer = null;
-        }
-        catch { /* ignore */ }
-
-        var state = Context.WebSocket.ReadyState;
-        if (state != WebSocketState.Closing && state != WebSocketState.Closed)
-        {
-            SafeClose(CloseStatusCode.Abnormal, "Socket error");
-        }
-
-        base.OnError(e);
-    }
-
-    protected override void OnMessage(MessageEventArgs e)
-    {
-        Interlocked.Exchange(ref _missedHeartbeats, 0);
-        _inactivityTimer?.Stop();
-        _inactivityTimer?.Start();
-
-        if (e.IsText)
-            MessageEvent?.Invoke(e.Data);
-    }
-
-    protected override void OnClose(CloseEventArgs e)
-    {
-        if (Interlocked.Exchange(ref _closed, 1) == 1)
-            return;
-
-        try
-        {
-            _inactivityTimer?.Stop();
-            _inactivityTimer?.Dispose();
-            _inactivityTimer = null;
-        }
-        catch { /* ignore */ }
-
-        var serial = Context.Headers["Serial"];
-
-        LiteNet3WebSocket.Log = $"Client {serial} has been disconnected";
-        Console.WriteLine(LiteNet3WebSocket.Log);
-
-        LiteNet3WebSocket.UnregisterConnection(serial);
-        LiteNet3WebSocket.UnbindSerial(serial);
-        DisconnectedEvent?.Invoke(serial, _connectionId);
-    }
-
-    private void InitializeInactivityTimer()
-    {
-        _inactivityTimer = new Timer(InactivityTimeout) { AutoReset = false };
-        _inactivityTimer.Elapsed += (_, _) =>
-        {
-            var serial = Context.Headers["Serial"];
-
-            try
-            {
-                if (Context.WebSocket.Ping("heartbeat"))
-                {
-                    Interlocked.Exchange(ref _missedHeartbeats, 0);
-                    Console.WriteLine($"Heartbeat OK for {serial}.");
-                    _inactivityTimer?.Start();
-                    return;
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Heartbeat failed for {serial}: {ex.Message}");
-            }
-
-            var missedHeartbeats = Interlocked.Increment(ref _missedHeartbeats);
-            Console.WriteLine($"Heartbeat missed for {serial}: {missedHeartbeats}/{MaxMissedHeartbeats}.");
-
-            if (missedHeartbeats >= MaxMissedHeartbeats)
-            {
-                SafeClose(CloseStatusCode.Normal, "Inactivity timeout");
-                return;
-            }
-
-            _inactivityTimer?.Start();
-        };
-        _inactivityTimer.Start();
-    }
-
-    private void SafeClose(CloseStatusCode code, string reason)
-    {
-        if (Interlocked.Exchange(ref _closeRequested, 1) == 1)
-            return;
-
-        try
-        {
-            if (Context?.WebSocket?.ReadyState is WebSocketState.Open or WebSocketState.Connecting)
-                Context.WebSocket.Close(code, reason);
-        }
-        catch { /* ignore */ }
     }
 }

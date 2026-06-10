@@ -12,7 +12,8 @@ using Toletus.LiteNet3.Handler.Responses.NotificationsResponses.Base;
 using Toletus.LiteNet3.SerialPort;
 using Toletus.LiteNet3.Server;
 using Toletus.Pack.Core.Network;
-using WebSocketSharp;
+using System.Net.WebSockets;
+using System.Text;
 
 namespace Toletus.LiteNet3;
 
@@ -94,7 +95,7 @@ public class LiteNet3BoardBase
         _connectedEvent.Reset();
 
         WebSockets.TryGetValue(Serial, out var webSocket);
-        if (webSocket is { IsAlive: true })
+        if (webSocket?.State == WebSocketState.Open)
             return;
 
         NetworkIp = NetworkHelper.GetLocalNetworkAddress(network);
@@ -203,7 +204,7 @@ public class LiteNet3BoardBase
             return;
         }
 
-        if (value is not { IsAlive: true })
+        if (value.State != WebSocketState.Open)
         {
             Console.WriteLine($"[LiteNet3] Send aborted: WebSocket not alive for serial {Serial}.");
             return;
@@ -211,7 +212,7 @@ public class LiteNet3BoardBase
 
         try
         {
-            value.Send(json);
+            _ = value.SendAsync(Encoding.UTF8.GetBytes(json), WebSocketMessageType.Text, true, CancellationToken.None);
         }
         catch (IOException ioEx)
         {
@@ -344,8 +345,8 @@ public class LiteNet3BoardBase
             {
                 try
                 {
-                    if (oldWs.IsAlive)
-                        oldWs.Close(CloseStatusCode.Normal, "Replaced by new connection");
+                    if (oldWs.State == WebSocketState.Open)
+                        _ = oldWs.CloseAsync(WebSocketCloseStatus.NormalClosure, "Replaced by new connection", CancellationToken.None);
                 }
                 catch
                 {
