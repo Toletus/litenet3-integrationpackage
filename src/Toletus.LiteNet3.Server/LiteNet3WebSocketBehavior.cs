@@ -33,7 +33,7 @@ public class LiteNet3WebSocketBehavior
 
         try
         {
-            var buffer = new byte[20000];
+            var buffer = new byte[40000];
             while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
             {
                 WebSocketReceiveResult result;
