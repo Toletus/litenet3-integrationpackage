@@ -27,7 +27,12 @@ public class LiteNet3Board : LiteNet3BoardBase
             boardBase.Connected,
             boardBase.Id,
             boardBase.Serial,
-            boardBase.Alias);
+            boardBase.Alias)
+        {
+            ServerUri = boardBase.ServerUri,
+            Firmware = boardBase.Firmware,
+            Hardware = boardBase.Hardware
+        };
     }
 
     public static LiteNet3Board CreateToSerialPort() => new();

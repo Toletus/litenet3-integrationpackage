@@ -9,12 +9,16 @@ namespace Toletus.LiteNet3.Server;
 
 public class LiteNet3WebSocket
 {
+    private static readonly TimeSpan KeepAliveInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan KeepAliveTimeout = Timeout.InfiniteTimeSpan;
+
     private TcpListener? _listener;
     private CancellationTokenSource? _cts;
     public string Log = string.Empty;
 
     private static readonly ConcurrentDictionary<string, bool> ActiveConnections = new();
     private static readonly ConcurrentDictionary<string, LiteNet3WebSocketBehavior> SerialToBehavior = new();
+    private static readonly ConcurrentDictionary<string, object> SerialLocks = new();
 
     public Action<LiteNet3WebSocketBehavior>? OnNewBehavior;
 
@@ -96,7 +100,8 @@ public class LiteNet3WebSocket
         var ws = WebSocket.CreateFromStream(stream, new WebSocketCreationOptions
         {
             IsServer = true,
-            KeepAliveInterval = TimeSpan.FromSeconds(30)
+            KeepAliveInterval = KeepAliveInterval,
+            KeepAliveTimeout = KeepAliveTimeout
         });
 
         var behavior = new LiteNet3WebSocketBehavior { LiteNet3WebSocket = this };
@@ -133,49 +138,84 @@ public class LiteNet3WebSocket
         return Convert.ToBase64String(hash);
     }
 
-    public static void RegisterConnection(string serial)
+    internal LiteNet3WebSocketBehavior? RegisterCurrentConnection(string serial, LiteNet3WebSocketBehavior behavior)
     {
-        Console.WriteLine(ActiveConnections.TryAdd(serial, true)
-            ? $"Client {serial} registered. Total connections: {ActiveConnections.Count}"
-            : $"Client {serial} reconnected. Total connections: {ActiveConnections.Count}");
+        var lockObj = SerialLocks.GetOrAdd(serial, _ => new object());
+        lock (lockObj)
+        {
+            SerialToBehavior.TryGetValue(serial, out var oldBehavior);
+            SerialToBehavior[serial] = behavior;
+
+            Console.WriteLine(ActiveConnections.TryAdd(serial, true)
+                ? $"Client {serial} registered. Total connections: {ActiveConnections.Count}"
+                : $"Client {serial} reconnected. Total connections: {ActiveConnections.Count}");
+
+            return oldBehavior != behavior ? oldBehavior : null;
+        }
     }
 
-    public void UnregisterConnection(string serial)
+    internal bool TryClearCurrentConnection(string serial, Guid connectionId)
     {
-        ActiveConnections.TryRemove(serial, out _);
-        Console.WriteLine($"Client {serial} unregistered. Remaining connections: {ActiveConnections.Count}");
+        var lockObj = SerialLocks.GetOrAdd(serial, _ => new object());
+        lock (lockObj)
+        {
+            if (!SerialToBehavior.TryGetValue(serial, out var currentBehavior))
+            {
+                Console.WriteLine(
+                    $"Client {serial} cleanup ignored for connection {connectionId}: no current behavior.");
+                return false;
+            }
+
+            if (currentBehavior.ConnectionId != connectionId)
+            {
+                Console.WriteLine(
+                    $"Client {serial} cleanup ignored for stale connection {connectionId}; current is {currentBehavior.ConnectionId}.");
+                return false;
+            }
+
+            SerialToBehavior.TryRemove(serial, out _);
+            ActiveConnections.TryRemove(serial, out _);
+            Console.WriteLine($"Client {serial} unregistered. Remaining connections: {ActiveConnections.Count}");
+            return true;
+        }
     }
 
     internal static bool TryGetBehavior(string serial, out LiteNet3WebSocketBehavior? behavior) =>
         SerialToBehavior.TryGetValue(serial, out behavior);
 
-    internal static void BindSerialToBehavior(string serial, LiteNet3WebSocketBehavior behavior) =>
-        SerialToBehavior[serial] = behavior;
-
-    internal static void UnbindSerial(string serial) =>
-        SerialToBehavior.TryRemove(serial, out _);
-
     public void StopAndClearWebSocketServer()
     {
         try
         {
-            if (_listener == null) return;
+            if (_listener != null)
+            {
+                Console.WriteLine("Stopping current WebSocket server...");
+                _cts?.Cancel();
+                _listener.Stop();
+                _listener = null;
+                _cts?.Dispose();
+                _cts = null;
+            }
 
-            Console.WriteLine("Stopping current WebSocket server...");
-            _cts?.Cancel();
-            _listener.Stop();
-            _listener = null;
-            _cts?.Dispose();
-            _cts = null;
-
-            ActiveConnections.Clear();
-            SerialToBehavior.Clear();
+            ClearConnectionsOwnedByThisServer();
 
             Console.WriteLine("WebSocket server stopped and resources cleared.");
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error while stopping WebSocket server: {ex.Message}");
+        }
+    }
+
+    private void ClearConnectionsOwnedByThisServer()
+    {
+        foreach (var pair in SerialToBehavior.ToArray())
+        {
+            if (!ReferenceEquals(pair.Value.LiteNet3WebSocket, this))
+                continue;
+
+            if (SerialToBehavior.TryRemove(pair.Key, out _))
+                ActiveConnections.TryRemove(pair.Key, out _);
         }
     }
 }
