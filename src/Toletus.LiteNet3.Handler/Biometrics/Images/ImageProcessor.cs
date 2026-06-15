@@ -61,18 +61,8 @@ public class ImageProcessor : IImageProcessor
             }
         }
 
-        using var surface = SKSurface.Create(new SKImageInfo(Width, Height));
-        var canvas = surface.Canvas;
-        canvas.Scale(-1, 1);
-        canvas.Translate(-Width, 0);
-        canvas.DrawBitmap(bmp, 0, 0);
-        canvas.Flush();
+        return bmp;
 
-        var snapshot = surface.Snapshot();
-        var flipped = SKBitmap.FromImage(snapshot);
-        bmp.Dispose();
-        return flipped;
-        
         static byte Expand5To8(byte v) => (byte)((v << 3) | (v >> 2));
     }
 
@@ -179,9 +169,7 @@ public class ImageProcessor : IImageProcessor
 
     private static void ApplyImageTransformations(Image<Rgba32> image)
     {
-        image.Mutate(ctx => ctx
-            .Grayscale()
-            .Flip(FlipMode.Horizontal));
+        image.Mutate(ctx => ctx.Grayscale());
 
         image.Metadata.ResolutionUnits = PixelResolutionUnit.PixelsPerInch;
         image.Metadata.HorizontalResolution = 500;
