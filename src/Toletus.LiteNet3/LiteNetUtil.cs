@@ -68,7 +68,13 @@ public static class LiteNetUtil
         if (discoveryResponse == null)
             return;
 
-        var discoveredBoard = LiteNet3BoardBase.FromDiscoveryResponse(response.RemoteEndPoint.Address, discoveryResponse);
+        var discoveredBoard = new LiteNet3BoardBase(
+            response.RemoteEndPoint.Address,
+            discoveryResponse.Connected,
+            discoveryResponse.Id,
+            connectionInfo: string.Empty,
+            discoveryResponse.Serial,
+            discoveryResponse.Alias);
 
         DiscoveredBoards.Add(discoveredBoard);
     }

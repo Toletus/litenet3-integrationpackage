@@ -12,8 +12,7 @@ using Toletus.LiteNet3.Handler.Responses.NotificationsResponses.Base;
 using Toletus.LiteNet3.SerialPort;
 using Toletus.LiteNet3.Server;
 using Toletus.Pack.Core.Network;
-using System.Net.WebSockets;
-using System.Text;
+using WebSocketSharp;
 
 namespace Toletus.LiteNet3;
 
@@ -29,8 +28,8 @@ public class LiteNet3BoardBase
     private readonly ConcurrentDictionary<string, Guid> _activeConnectionIds = new();
     private static readonly ConcurrentDictionary<string, object> ConnectLocks = new();
 
-    private static readonly ConcurrentDictionary<string, LiteNet3WebSocket> LiteNet3WebSockets = new();
-    private static readonly ConcurrentDictionary<string, BoardWebSocketConnection> WebSockets = new();
+    private static readonly Dictionary<string, LiteNet3WebSocket> LiteNet3WebSockets = new();
+    private static readonly Dictionary<string, WebSocket> WebSockets = new();
     private static SerialService? _serialService;
 
     private string ConnectionInfo { get; set; }
@@ -90,31 +89,12 @@ public class LiteNet3BoardBase
 
     public override string ToString() => $"LiteNet3 #{Id} {Ip}:{Port} {ConnectionInfo}";
 
-    public static LiteNet3BoardBase FromDiscoveryResponse(IPAddress ip, DiscoveryResponse discoveryResponse)
-    {
-        return new LiteNet3BoardBase(
-            ip,
-            discoveryResponse.Connected,
-            discoveryResponse.Id,
-            connectionInfo: string.Empty,
-            discoveryResponse.Serial,
-            discoveryResponse.Alias)
-        {
-            ServerUri = discoveryResponse.ServerUri,
-            Firmware = discoveryResponse.Firmware,
-            Hardware = discoveryResponse.Hardware
-        };
-    }
-
     public void Connect(string network)
     {
         _connectedEvent.Reset();
 
-        if (Serial == null)
-            throw new InvalidOperationException("LiteNet3 serial must be set before connecting via WebSocket.");
-
         WebSockets.TryGetValue(Serial, out var webSocket);
-        if (webSocket?.Socket.State == WebSocketState.Open)
+        if (webSocket is { IsAlive: true })
             return;
 
         NetworkIp = NetworkHelper.GetLocalNetworkAddress(network);
@@ -200,7 +180,7 @@ public class LiteNet3BoardBase
     {
         if (_serialService != null)
             CloseSerialPort();
-        else if (Serial != null)
+        else
             DisconnectWebSocketClients(Serial);
 
         Connected = false;
@@ -217,25 +197,34 @@ public class LiteNet3BoardBase
             return;
         }
 
-        if (Serial == null)
-        {
-            Console.WriteLine("[LiteNet3] Send aborted: serial is not set.");
-            return;
-        }
-
         if (!WebSockets.TryGetValue(Serial, out var value))
         {
             Console.WriteLine($"[LiteNet3] Send aborted: no WebSocket for serial {Serial}.");
             return;
         }
 
-        if (value.Socket.State != WebSocketState.Open)
+        if (value is not { IsAlive: true })
         {
             Console.WriteLine($"[LiteNet3] Send aborted: WebSocket not alive for serial {Serial}.");
             return;
         }
 
-        _ = SendWebSocketAsync(Serial, json, value);
+        try
+        {
+            value.Send(json);
+        }
+        catch (IOException ioEx)
+        {
+            Console.WriteLine($"[LiteNet3] Send failed (IO) for serial {Serial}: {ioEx.Message}");
+        }
+        catch (SocketException sockEx)
+        {
+            Console.WriteLine($"[LiteNet3] Send failed (Socket) for serial {Serial}: {sockEx.Message}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[LiteNet3] Send failed (Unexpected) for serial {Serial}: {ex.Message}");
+        }
     }
 
     private void CloseSerialPort()
@@ -251,12 +240,10 @@ public class LiteNet3BoardBase
         if (!LiteNet3WebSockets.TryGetValue(serial, out var liteNet3WebSocket)) return;
 
         if (!isOnDisconnect)
-        {
             liteNet3WebSocket.StopAndClearWebSocketServer();
-            LiteNet3WebSockets.TryRemove(serial, out _);
-        }
 
-        WebSockets.TryRemove(serial, out _);
+        LiteNet3WebSockets.Remove(serial);
+        WebSockets.Remove(serial);
     }
 
 
@@ -353,12 +340,12 @@ public class LiteNet3BoardBase
         _activeConnectionIds[serial] = connectionId;
         if (WebSockets.TryGetValue(serial, out var oldWs))
         {
-            if (!ReferenceEquals(oldWs.Socket, obj))
+            if (!ReferenceEquals(oldWs, obj))
             {
                 try
                 {
-                    if (oldWs.Socket.State == WebSocketState.Open)
-                        _ = oldWs.Socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Replaced by new connection", CancellationToken.None);
+                    if (oldWs.IsAlive)
+                        oldWs.Close(CloseStatusCode.Normal, "Replaced by new connection");
                 }
                 catch
                 {
@@ -369,7 +356,7 @@ public class LiteNet3BoardBase
             }
         }
 
-        WebSockets[serial] = new BoardWebSocketConnection(obj, connectionId);
+        WebSockets[serial] = obj;
         ToggleWebSocketEventSubscriptions();
         Console.WriteLine($"OnConnected: {Connected} {DateTime.Now}");
         _connectedEvent.Set();
@@ -423,63 +410,5 @@ public class LiteNet3BoardBase
         {
             return false;
         }
-    }
-
-    private static async Task SendWebSocketAsync(string serial, string json, BoardWebSocketConnection connection)
-    {
-        await connection.SendGate.WaitAsync();
-        try
-        {
-            if (!WebSockets.TryGetValue(serial, out var current) ||
-                !ReferenceEquals(current, connection) ||
-                current.ConnectionId != connection.ConnectionId)
-            {
-                Console.WriteLine($"[LiteNet3] Send aborted: stale WebSocket for serial {serial}.");
-                return;
-            }
-
-            if (connection.Socket.State != WebSocketState.Open)
-            {
-                Console.WriteLine($"[LiteNet3] Send aborted: WebSocket not alive for serial {serial}.");
-                return;
-            }
-
-            await connection.Socket.SendAsync(
-                Encoding.UTF8.GetBytes(json),
-                WebSocketMessageType.Text,
-                true,
-                CancellationToken.None);
-        }
-        catch (IOException ioEx)
-        {
-            Console.WriteLine($"[LiteNet3] Send failed (IO) for serial {serial}: {ioEx.Message}");
-        }
-        catch (WebSocketException wsEx)
-        {
-            Console.WriteLine($"[LiteNet3] Send failed (WebSocket) for serial {serial}: {wsEx.Message}");
-        }
-        catch (SocketException sockEx)
-        {
-            Console.WriteLine($"[LiteNet3] Send failed (Socket) for serial {serial}: {sockEx.Message}");
-        }
-        catch (OperationCanceledException cancelEx)
-        {
-            Console.WriteLine($"[LiteNet3] Send canceled for serial {serial}: {cancelEx.Message}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[LiteNet3] Send failed (Unexpected) for serial {serial}: {ex.Message}");
-        }
-        finally
-        {
-            connection.SendGate.Release();
-        }
-    }
-
-    private sealed class BoardWebSocketConnection(WebSocket socket, Guid connectionId)
-    {
-        public WebSocket Socket { get; } = socket;
-        public Guid ConnectionId { get; } = connectionId;
-        public SemaphoreSlim SendGate { get; } = new(1, 1);
     }
 }
