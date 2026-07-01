@@ -1,7 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
-using System.Text.Json;
 using Toletus.LiteNet3.Handler;
 using Toletus.LiteNet3.Handler.Requests;
 using Toletus.LiteNet3.Handler.Requests.Fetches;
@@ -12,7 +11,7 @@ using Toletus.LiteNet3.Handler.Responses.NotificationsResponses.Base;
 using Toletus.LiteNet3.SerialPort;
 using Toletus.LiteNet3.Server;
 using Toletus.Pack.Core.Network;
-using WebSocketSharp;
+using System.Net.WebSockets;
 
 namespace Toletus.LiteNet3;
 
@@ -28,8 +27,8 @@ public class LiteNet3BoardBase
     private readonly ConcurrentDictionary<string, Guid> _activeConnectionIds = new();
     private static readonly ConcurrentDictionary<string, object> ConnectLocks = new();
 
-    private static readonly Dictionary<string, LiteNet3WebSocket> LiteNet3WebSockets = new();
-    private static readonly Dictionary<string, WebSocket> WebSockets = new();
+    private static readonly ConcurrentDictionary<string, LiteNet3WebSocket> LiteNet3WebSockets = new();
+    private static readonly ConcurrentDictionary<string, BoardWebSocketConnection> WebSockets = new();
     private static SerialService? _serialService;
 
     private string ConnectionInfo { get; set; }
@@ -91,11 +90,45 @@ public class LiteNet3BoardBase
 
     public void Connect(string network)
     {
+        ArgumentException.ThrowIfNullOrEmpty(Serial);
+
+        if (StartServerAndCheckAlreadyConnected(network))
+            return;
+
+        if (_connectedEvent.Wait(TimeSpan.FromSeconds(30))) return;
+
+        Close();
+        throw new TimeoutException("LiteNet3 failed to connect within 30 seconds.");
+    }
+
+    public async Task ConnectAsync(string network, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(Serial);
+
+        if (StartServerAndCheckAlreadyConnected(network))
+            return;
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
+
+        try
+        {
+            await _connectedEvent.WaitHandle.WaitOneAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            Close();
+            throw new TimeoutException("LiteNet3 failed to connect within 30 seconds.");
+        }
+    }
+
+    private bool StartServerAndCheckAlreadyConnected(string network)
+    {
         _connectedEvent.Reset();
 
         WebSockets.TryGetValue(Serial, out var webSocket);
-        if (webSocket is { IsAlive: true })
-            return;
+        if (webSocket?.Socket.State == WebSocketState.Open)
+            return true;
 
         NetworkIp = NetworkHelper.GetLocalNetworkAddress(network);
         var serverUri = $"ws://{NetworkIp}:{_portServer}";
@@ -112,48 +145,34 @@ public class LiteNet3BoardBase
             {
                 existingServer = new LiteNet3WebSocket();
                 LiteNet3WebSockets[Serial] = existingServer;
-                existingServer.OnNewBehavior = (behavior) =>
-                {
-                    if (_currentBehavior != null)
-                    {
-                        _currentBehavior.ConnectedEvent -= OnConnected;
-                        _currentBehavior.DisconnectedEvent -= OnDisconnected;
-                        _currentBehavior.MessageEvent -= OnMessage;
-                    }
-
-                    _currentBehavior = behavior;
-                    behavior.ConnectedEvent += OnConnected;
-                    behavior.DisconnectedEvent += OnDisconnected;
-                    behavior.MessageEvent += OnMessage;
-                };
-
+                existingServer.OnNewBehavior = SwapCurrentBehavior;
                 existingServer.Start(uri);
             }
             else
             {
-                existingServer.OnNewBehavior = (behavior) =>
-                {
-                    if (_currentBehavior != null)
-                    {
-                        _currentBehavior.ConnectedEvent -= OnConnected;
-                        _currentBehavior.DisconnectedEvent -= OnDisconnected;
-                        _currentBehavior.MessageEvent -= OnMessage;
-                    }
-
-                    _currentBehavior = behavior;
-                    behavior.ConnectedEvent += OnConnected;
-                    behavior.DisconnectedEvent += OnDisconnected;
-                    behavior.MessageEvent += OnMessage;
-                };
+                existingServer.OnNewBehavior = SwapCurrentBehavior;
             }
         }
 
-        Console.WriteLine($"Start: {DateTime.Now}");
+        return false;
+    }
 
-        if (_connectedEvent.Wait(TimeSpan.FromSeconds(30))) return;
-        
-        Close();
-        throw new TimeoutException("LiteNet3 failed to connect within 30 seconds.");
+    private void SwapCurrentBehavior(LiteNet3WebSocketBehavior behavior)
+    {
+        lock (_subscriptionLock)
+        {
+            if (_currentBehavior != null)
+            {
+                _currentBehavior.ConnectedEvent -= OnConnected;
+                _currentBehavior.DisconnectedEvent -= OnDisconnected;
+                _currentBehavior.MessageEvent -= OnMessage;
+            }
+
+            _currentBehavior = behavior;
+            behavior.ConnectedEvent += OnConnected;
+            behavior.DisconnectedEvent += OnDisconnected;
+            behavior.MessageEvent += OnMessage;
+        }
     }
 
     public void ConnectSerialPort(string? serialPortName = null)
@@ -192,39 +211,17 @@ public class LiteNet3BoardBase
 
         if (_serialService?.IsOpen == true)
         {
-            Console.WriteLine($"[LiteNet3] Send via serial: {json}");
             _serialService.Send(json);
             return;
         }
 
         if (!WebSockets.TryGetValue(Serial, out var value))
-        {
-            Console.WriteLine($"[LiteNet3] Send aborted: no WebSocket for serial {Serial}.");
             return;
-        }
 
-        if (value is not { IsAlive: true })
-        {
-            Console.WriteLine($"[LiteNet3] Send aborted: WebSocket not alive for serial {Serial}.");
+        if (value.Socket.State != WebSocketState.Open)
             return;
-        }
 
-        try
-        {
-            value.Send(json);
-        }
-        catch (IOException ioEx)
-        {
-            Console.WriteLine($"[LiteNet3] Send failed (IO) for serial {Serial}: {ioEx.Message}");
-        }
-        catch (SocketException sockEx)
-        {
-            Console.WriteLine($"[LiteNet3] Send failed (Socket) for serial {Serial}: {sockEx.Message}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[LiteNet3] Send failed (Unexpected) for serial {Serial}: {ex.Message}");
-        }
+        _ = SendWebSocketAsync(Serial, json, value);
     }
 
     private void CloseSerialPort()
@@ -240,10 +237,12 @@ public class LiteNet3BoardBase
         if (!LiteNet3WebSockets.TryGetValue(serial, out var liteNet3WebSocket)) return;
 
         if (!isOnDisconnect)
+        {
             liteNet3WebSocket.StopAndClearWebSocketServer();
+            LiteNet3WebSockets.TryRemove(serial, out _);
+        }
 
-        LiteNet3WebSockets.Remove(serial);
-        WebSockets.Remove(serial);
+        WebSockets.TryRemove(serial, out _);
     }
 
 
@@ -263,7 +262,6 @@ public class LiteNet3BoardBase
                 _dispatcher.OnActionResponse += OnChangeResponseHandler;
 
                 _dispatcherSubscribed = true;
-                Console.WriteLine("[LiteNet3] Dispatcher handlers subscribed.");
             }
             else
             {
@@ -277,7 +275,6 @@ public class LiteNet3BoardBase
                 _dispatcher.OnActionResponse -= OnChangeResponseHandler;
 
                 _dispatcherSubscribed = false;
-                Console.WriteLine("[LiteNet3] Dispatcher handlers unsubscribed.");
             }
         }
     }
@@ -311,11 +308,9 @@ public class LiteNet3BoardBase
                 return;
             case PassageResponse response:
                 OnReleaseResponse?.Invoke(this, response);
-                Console.WriteLine(JsonSerializer.Serialize(obj));
                 return;
             case TimeoutResponse response:
                 OnReleaseResponse?.Invoke(this, response);
-                Console.WriteLine(JsonSerializer.Serialize(obj));
                 return;
             case ButtonResponse:
                 OnResponse?.Invoke(this, obj);
@@ -324,7 +319,6 @@ public class LiteNet3BoardBase
                 OnResponse?.Invoke(this, obj);
                 return;
             default:
-                Console.WriteLine(JsonSerializer.Serialize(obj));
                 break;
         }
     }
@@ -334,43 +328,27 @@ public class LiteNet3BoardBase
         OnBiometricsResponse?.Invoke(this, obj);
     }
 
-    private void OnConnected(WebSocket obj, string serial, Guid connectionId)
+    private void OnConnected(LiteNet3WebSocketBehavior behavior, WebSocket obj, string serial, Guid connectionId)
     {
+        if (behavior.ConnectionId != connectionId)
+            return;
+
         Connected = true;
         _activeConnectionIds[serial] = connectionId;
-        if (WebSockets.TryGetValue(serial, out var oldWs))
+        if (WebSockets.TryGetValue(serial, out var oldWs) && oldWs.ConnectionId != connectionId)
         {
-            if (!ReferenceEquals(oldWs, obj))
-            {
-                try
-                {
-                    if (oldWs.IsAlive)
-                        oldWs.Close(CloseStatusCode.Normal, "Replaced by new connection");
-                }
-                catch
-                {
-                    /* ignore */
-                }
-
-                Console.WriteLine($"[LiteNet3] Replacing existing WebSocket for serial {serial}.");
-            }
+            _ = oldWs.Behavior.CloseAsync("Replaced by new connection");
         }
 
-        WebSockets[serial] = obj;
+        WebSockets[serial] = new BoardWebSocketConnection(behavior, obj, connectionId);
         ToggleWebSocketEventSubscriptions();
-        Console.WriteLine($"OnConnected: {Connected} {DateTime.Now}");
         _connectedEvent.Set();
     }
 
     private void OnDisconnected(string serial, Guid connectionId)
     {
-        Console.WriteLine($"OnDisconnected: {Connected} {DateTime.Now}");
         if (_activeConnectionIds.TryGetValue(serial, out var current) && current != connectionId)
-        {
-            Console.WriteLine(
-                $"[LiteNet3] Ignoring OnDisconnected from stale connection {connectionId} for serial {serial}.");
             return;
-        }
 
         DisconnectWebSocketClients(serial, true);
         ToggleWebSocketEventSubscriptions(isRegister: false);
@@ -410,5 +388,69 @@ public class LiteNet3BoardBase
         {
             return false;
         }
+    }
+
+    private static async Task SendWebSocketAsync(string serial, string json, BoardWebSocketConnection connection)
+    {
+        try
+        {
+            if (!WebSockets.TryGetValue(serial, out var current) ||
+                !ReferenceEquals(current, connection) ||
+                current.ConnectionId != connection.ConnectionId)
+                return;
+
+            await connection.Behavior.SendTextAsync(json, CancellationToken.None);
+        }
+        catch (IOException ioEx)
+        {
+            Console.WriteLine($"[LiteNet3] Send failed (IO) for serial {serial}: {ioEx.Message}");
+        }
+        catch (WebSocketException wsEx)
+        {
+            Console.WriteLine($"[LiteNet3] Send failed (WebSocket) for serial {serial}: {wsEx.Message}");
+        }
+        catch (SocketException sockEx)
+        {
+            Console.WriteLine($"[LiteNet3] Send failed (Socket) for serial {serial}: {sockEx.Message}");
+        }
+        catch (OperationCanceledException cancelEx)
+        {
+            Console.WriteLine($"[LiteNet3] Send canceled for serial {serial}: {cancelEx.Message}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[LiteNet3] Send failed (Unexpected) for serial {serial}: {ex.Message}");
+        }
+    }
+
+    private sealed class BoardWebSocketConnection(LiteNet3WebSocketBehavior behavior, WebSocket socket, Guid connectionId)
+    {
+        public LiteNet3WebSocketBehavior Behavior { get; } = behavior;
+        public WebSocket Socket { get; } = socket;
+        public Guid ConnectionId { get; } = connectionId;
+    }
+}
+
+internal static class WaitHandleExtensions
+{
+    public static Task WaitOneAsync(this WaitHandle handle, CancellationToken cancellationToken)
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var registration = ThreadPool.RegisterWaitForSingleObject(
+            handle,
+            (_, timedOut) => { if (!timedOut) tcs.TrySetResult(); },
+            null,
+            Timeout.Infinite,
+            executeOnlyOnce: true);
+
+        var ctr = cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
+
+        return tcs.Task.ContinueWith(t =>
+        {
+            registration.Unregister(null);
+            ctr.Dispose();
+            return t;
+        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default).Unwrap();
     }
 }
